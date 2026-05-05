@@ -1,3 +1,4 @@
+//app\components\transferencias\RegistrarTransferenciaModal.tsx
 'use client';
 
 import { useMemo, useState } from 'react';
@@ -198,10 +199,7 @@ export default function RegistrarTransferenciaModal({ open, onClose }: Props) {
                 />
               </div>
 
-              <p className="mt-2 text-xs leading-5 text-zinc-400">
-                Teste fake: digitando <strong>02971595269</strong>, o sistema
-                encontra o usuário Tiago de Oliveira Ribeiro.
-              </p>
+            
             </div>
 
             <button

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRightIcon,
@@ -8,27 +8,48 @@ import {
   ChartBarIcon,
   CheckCircleIcon,
   EnvelopeIcon,
+  ExclamationTriangleIcon,
   LockClosedIcon,
   ReceiptPercentIcon,
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
+import { createClient } from '@/app/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
 
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    setErrorMessage('');
+
+    if (!email.trim() || !senha.trim()) {
+      setErrorMessage('Informe email e senha para entrar.');
+      return;
+    }
 
     setLoading(true);
 
-    // Login fake/bypass por enquanto.
-    setTimeout(() => {
-      router.push('/dashboard');
-    }, 500);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: senha,
+    });
+
+    setLoading(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    router.refresh();
+    router.push('/dashboard');
   }
 
   return (
@@ -133,9 +154,19 @@ export default function LoginPage() {
                 Entrar no sistema
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Acesso temporário para demonstração do painel.
+                Entre com seu email e senha cadastrados no Supabase.
               </p>
             </div>
+
+            {errorMessage && (
+              <div className="mb-5 flex items-start gap-3 rounded-[24px] border border-amber-100 bg-amber-50 p-4 text-amber-800">
+                <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none" />
+
+                <p className="text-sm leading-6 text-amber-700">
+                  {errorMessage}
+                </p>
+              </div>
+            )}
 
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
@@ -155,6 +186,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="seu@email.com"
+                    autoComplete="email"
                     className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
                   />
                 </div>
@@ -176,7 +208,8 @@ export default function LoginPage() {
                     type="password"
                     value={senha}
                     onChange={(e) => setSenha(e.target.value)}
-                    placeholder="Digite qualquer senha"
+                    placeholder="Digite sua senha"
+                    autoComplete="current-password"
                     className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
                   />
                 </div>
@@ -196,10 +229,10 @@ export default function LoginPage() {
             <div className="mt-5 rounded-[24px] bg-[#F7F7F5] p-4">
               <p className="text-xs leading-5 text-zinc-500">
                 <strong className="font-semibold text-zinc-700">
-                  Modo demonstração:
+                  Acesso protegido:
                 </strong>{' '}
-                por enquanto não precisa validar email ou senha. Ao clicar em
-                entrar, você será levado direto para o dashboard.
+                as rotas do dashboard agora exigem uma sessão ativa do
+                Supabase. Se a sessão expirar, você volta para o login.
               </p>
             </div>
           </div>

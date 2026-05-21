@@ -213,13 +213,7 @@ export default function LoginPage() {
             </form>
 
             <div className="mt-5 rounded-[24px] bg-[#F7F7F5] p-4">
-              <p className="text-xs leading-5 text-zinc-500">
-                <strong className="font-semibold text-zinc-700">
-                  Acesso protegido:
-                </strong>{' '}
-                as rotas do dashboard agora exigem uma sessão ativa do
-                Supabase. Se a sessão expirar, você volta para o login.
-              </p>
+              
             </div>
           </div>
 

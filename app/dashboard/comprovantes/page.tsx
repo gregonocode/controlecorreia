@@ -1,15 +1,17 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ArrowDownTrayIcon,
+  ArrowPathIcon,
   BanknotesIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
-  ClockIcon,
   DocumentMagnifyingGlassIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   EyeIcon,
   MagnifyingGlassIcon,
   PlusIcon,
@@ -17,89 +19,34 @@ import {
   UserIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
+import { createClient } from '@/app/lib/supabase/client';
 
-type StatusComprovante = 'concluida' | 'pendente' | 'cancelada';
+type StatusComprovante = 'concluida' | 'cancelada';
+
+type UsuarioSistema = {
+  id: string;
+  auth_user_id: string;
+  nome: string | null;
+  telefone: string | null;
+};
 
 type Comprovante = {
   id: string;
-  cliente: string;
-  telefone: string;
-  recebedor: string;
-  valorEnviado: number;
-  taxaPercentual: number;
-  taxaFixa: number;
-  data: string;
-  hora: string;
+  usuario_id: string;
+  nome_cliente: string;
+  valor_transferencia: number;
+  taxa_percentual_aplicada: number;
+  taxa_fixa_aplicada: number;
+  lucro_taxa: number;
+  valor_total_cobrado: number;
   status: StatusComprovante;
+  observacao: string | null;
+  created_at: string;
 };
-
-const comprovantesMock: Comprovante[] = [
-  {
-    id: 'TRF-001',
-    cliente: 'Marcos Silva',
-    telefone: '(93) 99111-2233',
-    recebedor: 'Ana Beatriz',
-    valorEnviado: 500,
-    taxaPercentual: 3,
-    taxaFixa: 5,
-    data: '04/05/2026',
-    hora: '09:42',
-    status: 'concluida',
-  },
-  {
-    id: 'TRF-002',
-    cliente: 'João Correia',
-    telefone: '(93) 98888-1020',
-    recebedor: 'Carlos Henrique',
-    valorEnviado: 1200,
-    taxaPercentual: 3,
-    taxaFixa: 5,
-    data: '04/05/2026',
-    hora: '11:10',
-    status: 'concluida',
-  },
-  {
-    id: 'TRF-003',
-    cliente: 'Maria Eduarda',
-    telefone: '(93) 98444-7712',
-    recebedor: 'Fernanda Lima',
-    valorEnviado: 250,
-    taxaPercentual: 3,
-    taxaFixa: 5,
-    data: '04/05/2026',
-    hora: '13:25',
-    status: 'pendente',
-  },
-  {
-    id: 'TRF-004',
-    cliente: 'Raimundo Alves',
-    telefone: '(93) 98123-4567',
-    recebedor: 'Paulo Roberto',
-    valorEnviado: 780,
-    taxaPercentual: 3,
-    taxaFixa: 5,
-    data: '03/05/2026',
-    hora: '16:04',
-    status: 'concluida',
-  },
-  {
-    id: 'TRF-005',
-    cliente: 'Juliana Souza',
-    telefone: '(93) 98777-6543',
-    recebedor: 'Renato Lima',
-    valorEnviado: 350,
-    taxaPercentual: 3,
-    taxaFixa: 5,
-    data: '02/05/2026',
-    hora: '10:18',
-    status: 'cancelada',
-  },
-];
 
 const filtrosStatus: { label: string; value: 'todos' | StatusComprovante }[] = [
   { label: 'Todos', value: 'todos' },
   { label: 'Concluídos', value: 'concluida' },
-  { label: 'Pendentes', value: 'pendente' },
   { label: 'Cancelados', value: 'cancelada' },
 ];
 
@@ -110,8 +57,14 @@ function formatCurrency(value: number) {
   }).format(value || 0);
 }
 
-function calcularLucro(item: Comprovante) {
-  return item.valorEnviado * (item.taxaPercentual / 100) + item.taxaFixa;
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
 
 function getStatusConfig(status: StatusComprovante) {
@@ -123,14 +76,6 @@ function getStatusConfig(status: StatusComprovante) {
     };
   }
 
-  if (status === 'pendente') {
-    return {
-      label: 'Pendente',
-      className: 'bg-amber-50 text-amber-700',
-      icon: ClockIcon,
-    };
-  }
-
   return {
     label: 'Cancelado',
     className: 'bg-rose-50 text-rose-700',
@@ -139,48 +84,157 @@ function getStatusConfig(status: StatusComprovante) {
 }
 
 export default function ComprovantesPage() {
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+
+  const [usuarioSistema, setUsuarioSistema] = useState<UsuarioSistema | null>(
+    null,
+  );
+
+  const [comprovantes, setComprovantes] = useState<Comprovante[]>([]);
   const [busca, setBusca] = useState('');
   const [statusFiltro, setStatusFiltro] = useState<'todos' | StatusComprovante>(
     'todos',
   );
 
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+
   const comprovantesFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
-    return comprovantesMock.filter((item) => {
+    return comprovantes.filter((item) => {
       const matchStatus =
         statusFiltro === 'todos' || item.status === statusFiltro;
 
       const matchBusca =
         !termo ||
         item.id.toLowerCase().includes(termo) ||
-        item.cliente.toLowerCase().includes(termo) ||
-        item.telefone.toLowerCase().includes(termo) ||
-        item.recebedor.toLowerCase().includes(termo);
+        item.nome_cliente.toLowerCase().includes(termo);
 
       return matchStatus && matchBusca;
     });
-  }, [busca, statusFiltro]);
+  }, [busca, comprovantes, statusFiltro]);
 
   const resumo = useMemo(() => {
     const concluidos = comprovantesFiltrados.filter(
       (item) => item.status === 'concluida',
     );
 
-    const totalEnviado = concluidos.reduce(
-      (acc, item) => acc + item.valorEnviado,
+    const totalTransferido = concluidos.reduce(
+      (acc, item) => acc + Number(item.valor_transferencia || 0),
       0,
     );
 
-    const lucro = concluidos.reduce((acc, item) => acc + calcularLucro(item), 0);
+    const lucro = concluidos.reduce(
+      (acc, item) => acc + Number(item.lucro_taxa || 0),
+      0,
+    );
+
+    const totalCobrado = concluidos.reduce(
+      (acc, item) => acc + Number(item.valor_total_cobrado || 0),
+      0,
+    );
 
     return {
       total: comprovantesFiltrados.length,
       concluidos: concluidos.length,
-      totalEnviado,
+      totalTransferido,
       lucro,
+      totalCobrado,
     };
   }, [comprovantesFiltrados]);
+
+  const carregarComprovantes = useCallback(
+    async (usuarioId: string) => {
+      setErrorMessage('');
+
+      const { data, error } = await supabase
+        .from('transferencias')
+        .select(
+          `
+          id,
+          usuario_id,
+          nome_cliente,
+          valor_transferencia,
+          taxa_percentual_aplicada,
+          taxa_fixa_aplicada,
+          lucro_taxa,
+          valor_total_cobrado,
+          status,
+          observacao,
+          created_at
+        `,
+        )
+        .eq('usuario_id', usuarioId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        setErrorMessage(error.message);
+        setComprovantes([]);
+        return;
+      }
+
+      setComprovantes((data || []) as Comprovante[]);
+    },
+    [supabase],
+  );
+
+  const carregarPagina = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage('');
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      router.push('/login');
+      return;
+    }
+
+    const { data: usuarioData, error: usuarioError } = await supabase
+      .from('usuarios')
+      .select('id, auth_user_id, nome, telefone')
+      .eq('auth_user_id', user.id)
+      .maybeSingle();
+
+    if (usuarioError) {
+      setErrorMessage(usuarioError.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!usuarioData) {
+      setErrorMessage(
+        'Usuário do sistema não encontrado. Verifique se a tabela usuarios foi criada e se o trigger automático está funcionando.',
+      );
+      setLoading(false);
+      return;
+    }
+
+    setUsuarioSistema(usuarioData as UsuarioSistema);
+    await carregarComprovantes(usuarioData.id);
+
+    setLoading(false);
+  }, [carregarComprovantes, router, supabase]);
+
+  useEffect(() => {
+    carregarPagina();
+  }, [carregarPagina]);
+
+  function handleOpenPdf(id: string) {
+    window.open(`/api/comprovantes/${id}/pdf`, '_blank', 'noopener,noreferrer');
+  }
+
+  function handleDownloadPdf(id: string) {
+    window.open(
+      `/api/comprovantes/${id}/pdf?download=1`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -192,12 +246,12 @@ export default function ComprovantesPage() {
           </div>
 
           <h1 className="text-2xl font-semibold tracking-tight text-[#181818] sm:text-3xl">
-            Comprovantes cadastrados
+            Comprovantes registrados
           </h1>
 
           <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500">
-            Consulte transferências registradas, acompanhe status, lucro e dados
-            dos clientes.
+            Consulte transferências realizadas, visualize os valores cobrados e
+            abra o comprovante em PDF para impressão.
           </p>
         </div>
 
@@ -210,46 +264,45 @@ export default function ComprovantesPage() {
         </Link>
       </section>
 
+      {errorMessage && (
+        <div className="flex items-start gap-3 rounded-[28px] border border-amber-100 bg-amber-50 p-4 text-amber-800">
+          <ExclamationTriangleIcon className="mt-0.5 h-6 w-6 flex-none" />
+
+          <div>
+            <p className="text-sm font-semibold">Atenção</p>
+            <p className="mt-1 text-sm leading-6 text-amber-700">
+              {errorMessage}
+            </p>
+          </div>
+        </div>
+      )}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5]">
-            <DocumentMagnifyingGlassIcon className="h-6 w-6 text-[#181818]" />
-          </div>
-          <p className="text-sm text-zinc-500">Registros encontrados</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#181818]">
-            {resumo.total}
-          </h2>
-        </div>
+        <ResumoCard
+          title="Registros encontrados"
+          value={loading ? '...' : String(resumo.total)}
+          icon={DocumentMagnifyingGlassIcon}
+        />
 
-        <div className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5]">
-            <CheckCircleIcon className="h-6 w-6 text-[#181818]" />
-          </div>
-          <p className="text-sm text-zinc-500">Concluídos</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#181818]">
-            {resumo.concluidos}
-          </h2>
-        </div>
+        <ResumoCard
+          title="Concluídos"
+          value={loading ? '...' : String(resumo.concluidos)}
+          icon={CheckCircleIcon}
+        />
 
-        <div className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5]">
-            <BanknotesIcon className="h-6 w-6 text-[#181818]" />
-          </div>
-          <p className="text-sm text-zinc-500">Total enviado</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#181818]">
-            {formatCurrency(resumo.totalEnviado)}
-          </h2>
-        </div>
+        <ResumoCard
+          title="Total transferido"
+          value={
+            loading ? 'Carregando...' : formatCurrency(resumo.totalTransferido)
+          }
+          icon={BanknotesIcon}
+        />
 
-        <div className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5]">
-            <ReceiptPercentIcon className="h-6 w-6 text-[#181818]" />
-          </div>
-          <p className="text-sm text-zinc-500">Lucro filtrado</p>
-          <h2 className="mt-2 text-2xl font-semibold text-[#181818]">
-            {formatCurrency(resumo.lucro)}
-          </h2>
-        </div>
+        <ResumoCard
+          title="Lucro filtrado"
+          value={loading ? 'Carregando...' : formatCurrency(resumo.lucro)}
+          icon={ReceiptPercentIcon}
+        />
       </section>
 
       <section className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
@@ -258,23 +311,22 @@ export default function ComprovantesPage() {
             <h2 className="text-lg font-semibold text-[#181818]">
               Lista de comprovantes
             </h2>
+
             <p className="mt-1 text-sm text-zinc-500">
               Use a busca ou filtros para encontrar um registro específico.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="relative w-full sm:w-80">
-              <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+          <div className="relative w-full lg:max-w-sm">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
 
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por nome, telefone ou código"
-                className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
-              />
-            </div>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome ou código"
+              className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
+            />
           </div>
         </div>
 
@@ -297,213 +349,268 @@ export default function ComprovantesPage() {
               </button>
             );
           })}
+
+          <button
+            type="button"
+            onClick={() => usuarioSistema?.id && carregarComprovantes(usuarioSistema.id)}
+            disabled={loading || !usuarioSistema?.id}
+            className="ml-auto hidden h-11 flex-none items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white px-5 text-sm font-medium text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+          >
+            <ArrowPathIcon className="h-4 w-4" />
+            Atualizar
+          </button>
         </div>
 
-        {/* Mobile cards */}
-        <div className="mt-5 space-y-3 lg:hidden">
-          {comprovantesFiltrados.map((item) => {
-            const status = getStatusConfig(item.status);
-            const StatusIcon = status.icon;
-
-            return (
-              <div
-                key={item.id}
-                className="rounded-[28px] border border-zinc-100 bg-[#FAFAFA] p-4"
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white">
-                      <UserIcon className="h-5 w-5 text-zinc-600" />
-                    </div>
-
-                    <div>
-                      <h3 className="font-medium text-[#181818]">
-                        {item.cliente}
-                      </h3>
-                      <p className="mt-1 text-sm text-zinc-500">
-                        Para: {item.recebedor}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`inline-flex flex-none items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
-                  >
-                    <StatusIcon className="h-3.5 w-3.5" />
-                    {status.label}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 rounded-[24px] bg-white p-4">
-                  <div>
-                    <p className="text-xs text-zinc-400">Código</p>
-                    <p className="mt-1 text-sm font-semibold text-[#181818]">
-                      {item.id}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-zinc-400">Data</p>
-                    <p className="mt-1 text-sm font-semibold text-[#181818]">
-                      {item.data} às {item.hora}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-zinc-400">Enviado</p>
-                    <p className="mt-1 text-sm font-semibold text-[#181818]">
-                      {formatCurrency(item.valorEnviado)}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-zinc-400">Lucro</p>
-                    <p className="mt-1 text-sm font-semibold text-[#181818]">
-                      {formatCurrency(calcularLucro(item))}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#181818] px-4 text-sm font-semibold text-white"
-                  >
-                    <EyeIcon className="h-5 w-5" />
-                    Ver
-                  </button>
-
-                  <button
-                    type="button"
-                    className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-600"
-                  >
-                    <ArrowDownTrayIcon className="h-5 w-5" />
-                    Baixar
-                  </button>
-                </div>
+        <div className="mt-5">
+          {loading ? (
+            <div className="flex min-h-64 items-center justify-center rounded-[28px] bg-[#FAFAFA]">
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-500">
+                <ArrowPathIcon className="h-5 w-5 animate-spin" />
+                Carregando comprovantes...
               </div>
-            );
-          })}
-        </div>
-
-        {/* Desktop table */}
-        <div className="mt-5 hidden overflow-hidden rounded-[28px] border border-zinc-100 lg:block">
-          <table className="w-full border-collapse">
-            <thead className="bg-[#FAFAFA]">
-              <tr className="text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
-                <th className="px-5 py-4">Código</th>
-                <th className="px-5 py-4">Cliente</th>
-                <th className="px-5 py-4">Recebedor</th>
-                <th className="px-5 py-4">Data</th>
-                <th className="px-5 py-4">Valor</th>
-                <th className="px-5 py-4">Lucro</th>
-                <th className="px-5 py-4">Status</th>
-                <th className="px-5 py-4 text-right">Ações</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-zinc-100 bg-white">
-              {comprovantesFiltrados.map((item) => {
-                const status = getStatusConfig(item.status);
-                const StatusIcon = status.icon;
-
-                return (
-                  <tr key={item.id} className="text-sm">
-                    <td className="px-5 py-4 font-medium text-[#181818]">
-                      {item.id}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <div>
-                        <p className="font-medium text-[#181818]">
-                          {item.cliente}
-                        </p>
-                        <p className="mt-1 text-xs text-zinc-400">
-                          {item.telefone}
-                        </p>
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-4 text-zinc-600">
-                      {item.recebedor}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2 text-zinc-500">
-                        <CalendarDaysIcon className="h-4 w-4" />
-                        <span>
-                          {item.data} às {item.hora}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="px-5 py-4 font-medium text-[#181818]">
-                      {formatCurrency(item.valorEnviado)}
-                    </td>
-
-                    <td className="px-5 py-4 font-medium text-[#181818]">
-                      {formatCurrency(calcularLucro(item))}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
-                      >
-                        <StatusIcon className="h-3.5 w-3.5" />
-                        {status.label}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
-                          aria-label="Ver comprovante"
-                        >
-                          <EyeIcon className="h-5 w-5" />
-                        </button>
-
-                        <button
-                          type="button"
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
-                          aria-label="Baixar comprovante"
-                        >
-                          <ArrowDownTrayIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {comprovantesFiltrados.length === 0 && (
-            <div className="bg-white px-5 py-12 text-center">
+            </div>
+          ) : comprovantesFiltrados.length === 0 ? (
+            <div className="rounded-[28px] border border-dashed border-zinc-200 bg-[#FAFAFA] px-5 py-12 text-center">
               <DocumentMagnifyingGlassIcon className="mx-auto h-10 w-10 text-zinc-300" />
+
               <p className="mt-3 text-sm font-medium text-[#181818]">
                 Nenhum comprovante encontrado
               </p>
-              <p className="mt-1 text-sm text-zinc-500">
-                Tente mudar o termo de busca ou o filtro selecionado.
+
+              <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-zinc-500">
+                Tente mudar o termo de busca, o filtro selecionado ou registre
+                uma nova transferência.
               </p>
             </div>
+          ) : (
+            <>
+              <div className="space-y-3 lg:hidden">
+                {comprovantesFiltrados.map((item) => (
+                  <ComprovanteCard
+                    key={item.id}
+                    item={item}
+                    onView={() => handleOpenPdf(item.id)}
+                    onDownload={() => handleDownloadPdf(item.id)}
+                  />
+                ))}
+              </div>
+
+              <div className="hidden overflow-hidden rounded-[28px] border border-zinc-100 lg:block">
+                <table className="w-full border-collapse">
+                  <thead className="bg-[#FAFAFA]">
+                    <tr className="text-left text-xs font-medium uppercase tracking-wide text-zinc-400">
+                      <th className="px-5 py-4">Código</th>
+                      <th className="px-5 py-4">Cliente</th>
+                      <th className="px-5 py-4">Data</th>
+                      <th className="px-5 py-4">Transferido</th>
+                      <th className="px-5 py-4">Taxa</th>
+                      <th className="px-5 py-4">Lucro</th>
+                      <th className="px-5 py-4">Status</th>
+                      <th className="px-5 py-4 text-right">Ações</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-zinc-100 bg-white">
+                    {comprovantesFiltrados.map((item) => {
+                      const status = getStatusConfig(item.status);
+                      const StatusIcon = status.icon;
+
+                      return (
+                        <tr key={item.id} className="text-sm">
+                          <td className="px-5 py-4 font-medium text-[#181818]">
+                            {item.id.slice(0, 8)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div>
+                              <p className="font-medium text-[#181818]">
+                                {item.nome_cliente}
+                              </p>
+
+                              <p className="mt-1 text-xs text-zinc-400">
+                                {item.id}
+                              </p>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2 text-zinc-500">
+                              <CalendarDaysIcon className="h-4 w-4" />
+                              <span>{formatDateTime(item.created_at)}</span>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 font-medium text-[#181818]">
+                            {formatCurrency(
+                              Number(item.valor_transferencia || 0),
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 text-zinc-600">
+                            {Number(item.taxa_percentual_aplicada || 0)}% +{' '}
+                            {formatCurrency(
+                              Number(item.taxa_fixa_aplicada || 0),
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 font-medium text-[#181818]">
+                            {formatCurrency(Number(item.lucro_taxa || 0))}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
+                            >
+                              <StatusIcon className="h-3.5 w-3.5" />
+                              {status.label}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPdf(item.id)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
+                                aria-label="Ver comprovante"
+                              >
+                                <EyeIcon className="h-5 w-5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPdf(item.id)}
+                                className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
+                                aria-label="Baixar comprovante"
+                              >
+                                <ArrowDownTrayIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
+      </section>
+    </div>
+  );
+}
 
-        {comprovantesFiltrados.length === 0 && (
-          <div className="mt-5 rounded-[28px] border border-zinc-100 bg-[#FAFAFA] px-5 py-12 text-center lg:hidden">
-            <DocumentMagnifyingGlassIcon className="mx-auto h-10 w-10 text-zinc-300" />
-            <p className="mt-3 text-sm font-medium text-[#181818]">
-              Nenhum comprovante encontrado
-            </p>
-            <p className="mt-1 text-sm text-zinc-500">
-              Tente mudar o termo de busca ou o filtro selecionado.
+type ResumoCardProps = {
+  title: string;
+  value: string;
+  icon: React.ElementType;
+};
+
+function ResumoCard({ title, value, icon: Icon }: ResumoCardProps) {
+  return (
+    <div className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5]">
+        <Icon className="h-6 w-6 text-[#181818]" />
+      </div>
+
+      <p className="text-sm text-zinc-500">{title}</p>
+
+      <h2 className="mt-2 text-2xl font-semibold text-[#181818]">{value}</h2>
+    </div>
+  );
+}
+
+type ComprovanteCardProps = {
+  item: Comprovante;
+  onView: () => void;
+  onDownload: () => void;
+};
+
+function ComprovanteCard({
+  item,
+  onView,
+  onDownload,
+}: ComprovanteCardProps) {
+  const status = getStatusConfig(item.status);
+  const StatusIcon = status.icon;
+
+  return (
+    <div className="rounded-[28px] border border-zinc-100 bg-[#FAFAFA] p-4">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-white">
+            <UserIcon className="h-5 w-5 text-zinc-600" />
+          </div>
+
+          <div className="min-w-0">
+            <h3 className="truncate font-medium text-[#181818]">
+              {item.nome_cliente}
+            </h3>
+
+            <p className="mt-1 text-xs text-zinc-400">
+              Código: {item.id.slice(0, 8)}
             </p>
           </div>
-        )}
-      </section>
+        </div>
+
+        <span
+          className={`inline-flex flex-none items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${status.className}`}
+        >
+          <StatusIcon className="h-3.5 w-3.5" />
+          {status.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 rounded-[24px] bg-white p-4">
+        <InfoItem label="Data" value={formatDateTime(item.created_at)} />
+
+        <InfoItem
+          label="Transferido"
+          value={formatCurrency(Number(item.valor_transferencia || 0))}
+        />
+
+        <InfoItem
+          label="Taxa"
+          value={`${Number(item.taxa_percentual_aplicada || 0)}% + ${formatCurrency(
+            Number(item.taxa_fixa_aplicada || 0),
+          )}`}
+        />
+
+        <InfoItem
+          label="Lucro"
+          value={formatCurrency(Number(item.lucro_taxa || 0))}
+        />
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          type="button"
+          onClick={onView}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#181818] px-4 text-sm font-semibold text-white"
+        >
+          <EyeIcon className="h-5 w-5" />
+          Ver PDF
+        </button>
+
+        <button
+          type="button"
+          onClick={onDownload}
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-zinc-200 bg-white px-4 text-sm font-semibold text-zinc-600"
+        >
+          <ArrowDownTrayIcon className="h-5 w-5" />
+          Baixar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-[#181818]">{value}</p>
     </div>
   );
 }

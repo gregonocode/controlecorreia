@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import {
   ArrowDownTrayIcon,
   ArrowTopRightOnSquareIcon,
+  ArrowUpOnSquareIcon,
   DevicePhoneMobileIcon,
-  ShareIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 
@@ -17,7 +17,7 @@ type BeforeInstallPromptEvent = Event & {
   }>;
 };
 
-const IOS_TUTORIAL_URL = 'https://www.youtube.com/shorts/E4N-ql_FVT4';
+const IOS_TUTORIAL_URL = 'https://www.youtube.com/shorts/Bm3VIOUe7ZY';
 
 function isStandaloneMode() {
   if (typeof window === 'undefined') return false;
@@ -196,7 +196,7 @@ export default function PwaInstallPrompt() {
               <div className="mt-5 rounded-[28px] bg-[#F7F7F5] p-4">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-[16px] bg-white text-[#181818]">
-                    <ShareIcon className="h-5 w-5" />
+                    <ArrowUpOnSquareIcon className="h-5 w-5" />
                   </div>
 
                   <div>

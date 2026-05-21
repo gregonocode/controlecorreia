@@ -6,7 +6,6 @@ import {
   ArrowRightIcon,
   BanknotesIcon,
   ChartBarIcon,
-  CheckCircleIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
   LockClosedIcon,
@@ -111,19 +110,6 @@ export default function LoginPage() {
               <p className="text-sm font-medium">Lucro</p>
               <p className="mt-1 text-xs leading-5 text-white/45">
                 Veja ganhos do dia ou mês.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="relative z-10 rounded-[32px] border border-white/10 bg-white/5 p-5">
-          <div className="flex items-start gap-3">
-            <CheckCircleIcon className="mt-0.5 h-6 w-6 flex-none text-white" />
-
-            <div>
-              <p className="text-sm font-medium">MVP em modo demonstração</p>
-              <p className="mt-1 text-sm leading-6 text-white/45">
-                Nesta primeira versão, o sistema roda apenas no frontend 
               </p>
             </div>
           </div>

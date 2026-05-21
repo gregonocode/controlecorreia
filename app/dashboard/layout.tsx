@@ -1,6 +1,7 @@
 //app\dashboard\layout.tsx
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -11,6 +12,7 @@ import {
   PlusCircleIcon,
   ReceiptPercentIcon,
 } from '@heroicons/react/24/outline';
+import { createClient } from '@/app/lib/supabase/client';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -42,8 +44,17 @@ const navItems = [
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  function handleLogout() {
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    await supabase.auth.signOut();
+
+    router.refresh();
     router.push('/login');
   }
 
@@ -107,10 +118,11 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <button
               type="button"
               onClick={handleLogout}
+              disabled={loggingOut}
               className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-full bg-white text-sm font-semibold text-[#181818] transition hover:bg-zinc-100"
             >
               <ArrowLeftOnRectangleIcon className="h-5 w-5" />
-              Sair
+              {loggingOut ? 'Saindo...' : 'Sair'}
             </button>
           </div>
         </div>
@@ -135,6 +147,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
           <button
             type="button"
             onClick={handleLogout}
+            disabled={loggingOut}
             className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-zinc-600 shadow-sm"
             aria-label="Sair"
           >

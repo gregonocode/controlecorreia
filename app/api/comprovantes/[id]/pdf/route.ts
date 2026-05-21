@@ -43,12 +43,21 @@ function formatCurrency(value: number) {
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function formatComprovanteCode(id: string) {
+  const number = Array.from(id.replace(/-/g, '')).reduce((acc, char) => {
+    return (acc * 31 + char.charCodeAt(0)) % 1000000000;
+  }, 0);
+
+  return `#${String(number || 1).padStart(9, '0')}`;
 }
 
 function sanitizePdfText(value: string) {
@@ -87,6 +96,7 @@ function wrapText(value: string, maxLength: number) {
 }
 
 function createPdfBuffer(comprovante: Comprovante, usuario: UsuarioSistema) {
+  const code = formatComprovanteCode(comprovante.id);
   const statusLabel =
     comprovante.status === 'concluida' ? 'Concluído' : 'Cancelado';
 
@@ -139,7 +149,7 @@ function createPdfBuffer(comprovante: Comprovante, usuario: UsuarioSistema) {
   text('Dados do comprovante', 72, 660, 16, { bold: true });
   line(72, 644, 523, 644);
 
-  labelValue('Código', comprovante.id, 72, 610);
+  labelValue('Código', code, 72, 610);
   labelValue('Cliente', truncate(comprovante.nome_cliente, 44), 72, 560);
   labelValue('Data da transferência', formatDateTime(comprovante.created_at), 72, 510);
   labelValue('Status', statusLabel, 354, 510);
@@ -306,7 +316,7 @@ export async function GET(request: NextRequest, context: RouteParams) {
     usuarioData as UsuarioSistema,
   );
   const shouldDownload = request.nextUrl.searchParams.get('download') === '1';
-  const filename = `comprovante-${id.slice(0, 8)}.pdf`;
+  const filename = `comprovante-${formatComprovanteCode(id).slice(1)}.pdf`;
 
   return new Response(pdf, {
     headers: {

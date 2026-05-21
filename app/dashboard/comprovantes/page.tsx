@@ -67,6 +67,14 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatComprovanteCode(id: string) {
+  const number = Array.from(id.replace(/-/g, '')).reduce((acc, char) => {
+    return (acc * 31 + char.charCodeAt(0)) % 1000000000;
+  }, 0);
+
+  return `#${String(number || 1).padStart(9, '0')}`;
+}
+
 function getStatusConfig(status: StatusComprovante) {
   if (status === 'concluida') {
     return {
@@ -110,6 +118,7 @@ export default function ComprovantesPage() {
       const matchBusca =
         !termo ||
         item.id.toLowerCase().includes(termo) ||
+        formatComprovanteCode(item.id).toLowerCase().includes(termo) ||
         item.nome_cliente.toLowerCase().includes(termo);
 
       return matchStatus && matchBusca;
@@ -414,11 +423,12 @@ export default function ComprovantesPage() {
                     {comprovantesFiltrados.map((item) => {
                       const status = getStatusConfig(item.status);
                       const StatusIcon = status.icon;
+                      const code = formatComprovanteCode(item.id);
 
                       return (
                         <tr key={item.id} className="text-sm">
                           <td className="px-5 py-4 font-medium text-[#181818]">
-                            {item.id.slice(0, 8)}
+                            {code}
                           </td>
 
                           <td className="px-5 py-4">
@@ -428,7 +438,7 @@ export default function ComprovantesPage() {
                               </p>
 
                               <p className="mt-1 text-xs text-zinc-400">
-                                {item.id}
+                                Comprovante {code}
                               </p>
                             </div>
                           </td>
@@ -534,6 +544,7 @@ function ComprovanteCard({
 }: ComprovanteCardProps) {
   const status = getStatusConfig(item.status);
   const StatusIcon = status.icon;
+  const code = formatComprovanteCode(item.id);
 
   return (
     <div className="rounded-[28px] border border-zinc-100 bg-[#FAFAFA] p-4">
@@ -549,7 +560,7 @@ function ComprovanteCard({
             </h3>
 
             <p className="mt-1 text-xs text-zinc-400">
-              Código: {item.id.slice(0, 8)}
+              Código: {code}
             </p>
           </div>
         </div>

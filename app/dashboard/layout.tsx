@@ -100,13 +100,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
           <div className="mt-auto rounded-[28px] bg-[#F7F7F5] p-4">
             <p className="text-sm font-medium text-[#181818]">
-              Modo demonstração
+              Modo Produção
             </p>
 
-            <p className="mt-1 text-xs leading-5 text-zinc-500">
-              Dados fake apenas para apresentar o visual ao cliente.
-            </p>
-
+           
             <button
               type="button"
               onClick={handleLogout}

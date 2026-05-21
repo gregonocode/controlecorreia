@@ -272,7 +272,7 @@ export default function RegistrarTransferenciaModal({
                     onBlur={() => {
                       window.setTimeout(() => setAutocompleteOpen(false), 120);
                     }}
-                    placeholder="Ex: Tiago de Oliveira Ribeiro"
+                    placeholder="Ex: Emanuel da Silva Costa"
                     autoComplete="off"
                     className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-5 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
                   />

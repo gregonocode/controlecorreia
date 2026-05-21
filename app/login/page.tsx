@@ -140,7 +140,7 @@ export default function LoginPage() {
                 Entrar no sistema
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Entre com seu email e senha cadastrados no Supabase.
+                Entre com seu email e senha cadastrados .
               </p>
             </div>
 

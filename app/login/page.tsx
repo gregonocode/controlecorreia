@@ -13,6 +13,7 @@ import {
   ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import { createClient } from '@/app/lib/supabase/client';
+import PwaInstallPrompt from './_components/pwa-install-prompt';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -212,9 +213,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-5 rounded-[24px] bg-[#F7F7F5] p-4">
-              
-            </div>
           </div>
 
           <p className="mt-6 text-center text-xs text-zinc-400">
@@ -222,6 +220,8 @@ export default function LoginPage() {
           </p>
         </div>
       </section>
+
+      <PwaInstallPrompt />
     </main>
   );
 }

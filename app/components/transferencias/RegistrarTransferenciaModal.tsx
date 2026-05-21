@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BanknotesIcon,
   CheckCircleIcon,
@@ -46,6 +46,9 @@ export default function RegistrarTransferenciaModal({
 
   const [nomeCliente, setNomeCliente] = useState('');
   const [valorTransferencia, setValorTransferencia] = useState('');
+  const [clienteSugestoes, setClienteSugestoes] = useState<string[]>([]);
+  const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const [autocompleteLoading, setAutocompleteLoading] = useState(false);
 
   const [taxaManualAtiva, setTaxaManualAtiva] = useState(false);
   const [taxaManualPercentual, setTaxaManualPercentual] = useState('');
@@ -78,12 +81,71 @@ export default function RegistrarTransferenciaModal({
     taxaManualFixa,
   ]);
 
+  useEffect(() => {
+    const termo = nomeCliente.trim();
+
+    if (!open || step !== 'formulario' || !usuarioId || termo.length < 2) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const timeoutId = window.setTimeout(async () => {
+      setAutocompleteLoading(true);
+
+      const { data, error } = await supabase
+        .from('transferencias')
+        .select('nome_cliente')
+        .eq('usuario_id', usuarioId)
+        .ilike('nome_cliente', `%${termo}%`)
+        .order('created_at', { ascending: false })
+        .limit(12);
+
+      if (cancelled) return;
+
+      if (error) {
+        setClienteSugestoes([]);
+        setAutocompleteLoading(false);
+        return;
+      }
+
+      const nomes = (data || []).reduce<string[]>((acc, item) => {
+        const nome = String(item.nome_cliente || '').trim();
+        const alreadyExists = acc.some(
+          (savedName) => savedName.toLowerCase() === nome.toLowerCase(),
+        );
+
+        if (nome && !alreadyExists) {
+          acc.push(nome);
+        }
+
+        return acc;
+      }, []);
+
+      setClienteSugestoes(nomes.slice(0, 5));
+      setAutocompleteLoading(false);
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [nomeCliente, open, step, supabase, usuarioId]);
+
+  const showAutocomplete =
+    autocompleteOpen &&
+    nomeCliente.trim().length >= 2 &&
+    (autocompleteLoading || clienteSugestoes.length > 0);
+
   if (!open) return null;
 
   function resetModal() {
     setStep('formulario');
     setNomeCliente('');
     setValorTransferencia('');
+    setClienteSugestoes([]);
+    setAutocompleteOpen(false);
+    setAutocompleteLoading(false);
     setTaxaManualAtiva(false);
     setTaxaManualPercentual('');
     setTaxaManualFixa('');
@@ -202,10 +264,43 @@ export default function RegistrarTransferenciaModal({
                     id="nomeCliente"
                     type="text"
                     value={nomeCliente}
-                    onChange={(e) => setNomeCliente(e.target.value)}
+                    onChange={(e) => {
+                      setNomeCliente(e.target.value);
+                      setAutocompleteOpen(true);
+                    }}
+                    onFocus={() => setAutocompleteOpen(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => setAutocompleteOpen(false), 120);
+                    }}
                     placeholder="Ex: Tiago de Oliveira Ribeiro"
+                    autoComplete="off"
                     className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-5 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
                   />
+
+                  {showAutocomplete && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-[24px] border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-200/70">
+                      {autocompleteLoading && clienteSugestoes.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-zinc-400">
+                          Buscando clientes...
+                        </div>
+                      ) : (
+                        clienteSugestoes.map((nome) => (
+                          <button
+                            key={nome}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setNomeCliente(nome);
+                              setAutocompleteOpen(false);
+                            }}
+                            className="flex min-h-11 w-full items-center rounded-[18px] px-4 text-left text-sm font-medium text-[#181818] transition hover:bg-[#F7F7F5]"
+                          >
+                            {nome}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 

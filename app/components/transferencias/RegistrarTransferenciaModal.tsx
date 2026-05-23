@@ -436,10 +436,7 @@ export default function RegistrarTransferenciaModal({
                   Pagar depois
                 </span>
 
-                <span className="mt-2 block text-sm leading-6 text-zinc-500">
-                  Salva a transferência como pendente. Ela só entra no lucro
-                  depois que for concluída nos comprovantes.
-                </span>
+    
               </span>
             </label>
 

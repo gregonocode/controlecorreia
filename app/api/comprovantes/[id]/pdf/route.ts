@@ -169,7 +169,7 @@ function createPdfBuffer(comprovante: Comprovante, usuario: UsuarioSistema) {
   );
   labelValue('Taxa aplicada', taxa, 354, 402);
   labelValue(
-    'Lucro da taxa',
+    'taxa',
     formatCurrency(Number(comprovante.lucro_taxa || 0)),
     72,
     352,

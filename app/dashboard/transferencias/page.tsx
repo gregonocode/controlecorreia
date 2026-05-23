@@ -26,7 +26,7 @@ type Transferencia = {
   taxa_fixa_aplicada: number;
   lucro_taxa: number;
   valor_total_cobrado: number;
-  status: 'concluida' | 'cancelada';
+  status: 'concluida' | 'cancelada' | 'pendente';
   observacao: string | null;
   created_at: string;
 };
@@ -480,6 +480,14 @@ function TransferenciaCard({ item }: { item: Transferencia }) {
 }
 
 function StatusBadge({ status }: { status: Transferencia['status'] }) {
+  if (status === 'pendente') {
+    return (
+      <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+        Pendente
+      </span>
+    );
+  }
+
   const active = status === 'concluida';
 
   return (

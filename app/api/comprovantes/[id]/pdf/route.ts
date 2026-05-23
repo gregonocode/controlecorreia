@@ -9,7 +9,7 @@ type RouteParams = {
   }>;
 };
 
-type StatusComprovante = 'concluida' | 'cancelada';
+type StatusComprovante = 'concluida' | 'cancelada' | 'pendente';
 
 type UsuarioSistema = {
   id: string;
@@ -98,7 +98,11 @@ function wrapText(value: string, maxLength: number) {
 function createPdfBuffer(comprovante: Comprovante, usuario: UsuarioSistema) {
   const code = formatComprovanteCode(comprovante.id);
   const statusLabel =
-    comprovante.status === 'concluida' ? 'Concluído' : 'Cancelado';
+    comprovante.status === 'concluida'
+      ? 'Concluido'
+      : comprovante.status === 'pendente'
+        ? 'Pendente'
+        : 'Cancelado';
 
   const taxa = `${Number(comprovante.taxa_percentual_aplicada || 0)}% + ${formatCurrency(
     Number(comprovante.taxa_fixa_aplicada || 0),

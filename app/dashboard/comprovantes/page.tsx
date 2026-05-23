@@ -9,6 +9,7 @@ import {
   BanknotesIcon,
   CalendarDaysIcon,
   CheckCircleIcon,
+  ClockIcon,
   DocumentMagnifyingGlassIcon,
   DocumentTextIcon,
   EllipsisVerticalIcon,
@@ -22,7 +23,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { createClient } from '@/app/lib/supabase/client';
 
-type StatusComprovante = 'concluida' | 'cancelada';
+type StatusComprovante = 'concluida' | 'cancelada' | 'pendente';
 
 type UsuarioSistema = {
   id: string;
@@ -48,6 +49,7 @@ type Comprovante = {
 const filtrosStatus: { label: string; value: 'todos' | StatusComprovante }[] = [
   { label: 'Todos', value: 'todos' },
   { label: 'Concluídos', value: 'concluida' },
+  { label: 'Pendentes', value: 'pendente' },
   { label: 'Cancelados', value: 'cancelada' },
 ];
 
@@ -85,6 +87,14 @@ function getStatusConfig(status: StatusComprovante) {
     };
   }
 
+  if (status === 'pendente') {
+    return {
+      label: 'Pendente',
+      className: 'bg-amber-50 text-amber-700',
+      icon: ClockIcon,
+    };
+  }
+
   return {
     label: 'Cancelado',
     className: 'bg-rose-50 text-rose-700',
@@ -108,8 +118,11 @@ export default function ComprovantesPage() {
 
   const [loading, setLoading] = useState(true);
   const [cancelandoId, setCancelandoId] = useState<string | null>(null);
+  const [concluindoId, setConcluindoId] = useState<string | null>(null);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [comprovanteParaCancelar, setComprovanteParaCancelar] =
+    useState<Comprovante | null>(null);
+  const [comprovanteParaConcluir, setComprovanteParaConcluir] =
     useState<Comprovante | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -224,6 +237,37 @@ export default function ComprovantesPage() {
     );
     setSuccessMessage('Transferência cancelada com sucesso.');
     setComprovanteParaCancelar(null);
+  }
+
+  async function handleConcluirTransferencia() {
+    if (!usuarioSistema?.id || !comprovanteParaConcluir) return;
+
+    setConcluindoId(comprovanteParaConcluir.id);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const { error } = await supabase
+      .from('transferencias')
+      .update({ status: 'concluida' })
+      .eq('id', comprovanteParaConcluir.id)
+      .eq('usuario_id', usuarioSistema.id);
+
+    setConcluindoId(null);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setComprovantes((current) =>
+      current.map((item) =>
+        item.id === comprovanteParaConcluir.id
+          ? { ...item, status: 'concluida' }
+          : item,
+      ),
+    );
+    setSuccessMessage('Transferência concluída com sucesso.');
+    setComprovanteParaConcluir(null);
   }
 
   const carregarPagina = useCallback(async () => {
@@ -460,6 +504,7 @@ export default function ComprovantesPage() {
                       setMenuAbertoId(null);
                       setComprovanteParaCancelar(item);
                     }}
+                    onConclude={() => setComprovanteParaConcluir(item)}
                   />
                 ))}
               </div>
@@ -556,6 +601,16 @@ export default function ComprovantesPage() {
                                 <ArrowDownTrayIcon className="h-5 w-5" />
                               </button>
 
+                              {item.status === 'pendente' && (
+                                <button
+                                  type="button"
+                                  onClick={() => setComprovanteParaConcluir(item)}
+                                  className="inline-flex h-10 items-center justify-center rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                                >
+                                  Concluir
+                                </button>
+                              )}
+
                               <ComprovanteActionsMenu
                                 item={item}
                                 open={menuAbertoId === item.id}
@@ -593,6 +648,18 @@ export default function ComprovantesPage() {
           onConfirm={handleCancelarTransferencia}
         />
       )}
+
+      {comprovanteParaConcluir && (
+        <ConfirmConcludeModal
+          item={comprovanteParaConcluir}
+          loading={concluindoId === comprovanteParaConcluir.id}
+          onClose={() => {
+            if (concluindoId) return;
+            setComprovanteParaConcluir(null);
+          }}
+          onConfirm={handleConcluirTransferencia}
+        />
+      )}
     </div>
   );
 }
@@ -624,6 +691,7 @@ type ComprovanteCardProps = {
   menuAberto: boolean;
   onToggleMenu: () => void;
   onCancel: () => void;
+  onConclude: () => void;
 };
 
 function ComprovanteCard({
@@ -633,6 +701,7 @@ function ComprovanteCard({
   menuAberto,
   onToggleMenu,
   onCancel,
+  onConclude,
 }: ComprovanteCardProps) {
   const status = getStatusConfig(item.status);
   const StatusIcon = status.icon;
@@ -714,6 +783,17 @@ function ComprovanteCard({
           Baixar
         </button>
       </div>
+
+      {item.status === 'pendente' && (
+        <button
+          type="button"
+          onClick={onConclude}
+          className="mt-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-emerald-600 px-4 text-sm font-semibold text-white"
+        >
+          <CheckCircleIcon className="h-5 w-5" />
+          Concluir
+        </button>
+      )}
     </div>
   );
 }
@@ -820,6 +900,71 @@ function ConfirmCancelModal({
             className="inline-flex h-11 items-center justify-center rounded-full bg-rose-600 px-5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? 'Cancelando...' : 'Confirmar cancelamento'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ConfirmConcludeModalProps = {
+  item: Comprovante;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+};
+
+function ConfirmConcludeModal({
+  item,
+  loading,
+  onClose,
+  onConfirm,
+}: ConfirmConcludeModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl shadow-zinc-950/20 sm:p-6">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-emerald-50 text-emerald-600">
+          <CheckCircleIcon className="h-6 w-6" />
+        </div>
+
+        <h2 className="text-lg font-semibold text-[#181818]">
+          Concluir transferência?
+        </h2>
+
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          A transferência de {item.nome_cliente} será marcada como concluída e
+          passará a entrar na soma de lucro e totais.
+        </p>
+
+        <div className="mt-4 rounded-2xl bg-[#FAFAFA] p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+            Comprovante
+          </p>
+          <p className="mt-1 font-semibold text-[#181818]">
+            {formatComprovanteCode(item.id)}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {formatCurrency(Number(item.valor_transferencia || 0))}
+          </p>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Manter pendente
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Concluindo...' : 'Confirmar conclusão'}
           </button>
         </div>
       </div>

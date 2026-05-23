@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   BanknotesIcon,
   CheckCircleIcon,
+  ClockIcon,
   ExclamationTriangleIcon,
   ReceiptPercentIcon,
   UserIcon,
@@ -53,6 +54,7 @@ export default function RegistrarTransferenciaModal({
   const [taxaManualAtiva, setTaxaManualAtiva] = useState(false);
   const [taxaManualPercentual, setTaxaManualPercentual] = useState('');
   const [taxaManualFixa, setTaxaManualFixa] = useState('');
+  const [pagarDepois, setPagarDepois] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -149,6 +151,7 @@ export default function RegistrarTransferenciaModal({
     setTaxaManualAtiva(false);
     setTaxaManualPercentual('');
     setTaxaManualFixa('');
+    setPagarDepois(false);
     setLoading(false);
     setErrorMessage('');
   }
@@ -189,7 +192,7 @@ export default function RegistrarTransferenciaModal({
         : null,
       taxa_manual_fixa: taxaManualAtiva ? toNumber(taxaManualFixa) : null,
 
-      status: 'concluida',
+      status: pagarDepois ? 'pendente' : 'concluida',
     });
 
     setLoading(false);
@@ -419,6 +422,27 @@ export default function RegistrarTransferenciaModal({
               )}
             </div>
 
+            <label className="flex cursor-pointer items-start gap-4 rounded-[28px] border border-zinc-200 bg-[#FAFAFA] p-4">
+              <input
+                type="checkbox"
+                checked={pagarDepois}
+                onChange={(event) => setPagarDepois(event.target.checked)}
+                className="mt-1 h-5 w-5 rounded border-zinc-300 accent-[#181818]"
+              />
+
+              <span>
+                <span className="flex items-center gap-2 text-sm font-semibold text-[#181818]">
+                  <ClockIcon className="h-5 w-5" />
+                  Pagar depois
+                </span>
+
+                <span className="mt-2 block text-sm leading-6 text-zinc-500">
+                  Salva a transferência como pendente. Ela só entra no lucro
+                  depois que for concluída nos comprovantes.
+                </span>
+              </span>
+            </label>
+
             <div className="rounded-[28px] bg-[#181818] p-5 text-white">
               <p className="text-sm text-white/50">Prévia da transferência</p>
 
@@ -442,13 +466,9 @@ export default function RegistrarTransferenciaModal({
                 </div>
 
                 <div className="rounded-[22px] bg-white/5 p-4">
-                  <p className="text-xs text-white/40">
-                    {taxaManualAtiva ? 'Total cobrado' : 'Taxa aplicada'}
-                  </p>
+                  <p className="text-xs text-white/40">Status inicial</p>
                   <p className="mt-1 text-sm font-semibold">
-                    {taxaManualAtiva
-                      ? formatCurrency(preview.totalManual)
-                      : 'Pela faixa padrão'}
+                    {pagarDepois ? 'Pendente' : 'Concluida'}
                   </p>
                 </div>
               </div>

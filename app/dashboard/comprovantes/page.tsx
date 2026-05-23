@@ -46,6 +46,9 @@ type Comprovante = {
   created_at: string;
 };
 
+type PdfAction = 'view' | 'download';
+type PdfFormato = 'a4' | 'pdv';
+
 const filtrosStatus: { label: string; value: 'todos' | StatusComprovante }[] = [
   { label: 'Todos', value: 'todos' },
   { label: 'Concluídos', value: 'concluida' },
@@ -124,6 +127,10 @@ export default function ComprovantesPage() {
     useState<Comprovante | null>(null);
   const [comprovanteParaConcluir, setComprovanteParaConcluir] =
     useState<Comprovante | null>(null);
+  const [pdfSelection, setPdfSelection] = useState<{
+    item: Comprovante;
+    action: PdfAction;
+  } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -314,16 +321,22 @@ export default function ComprovantesPage() {
     carregarPagina();
   }, [carregarPagina]);
 
-  function handleOpenPdf(id: string) {
-    window.open(`/api/comprovantes/${id}/pdf`, '_blank', 'noopener,noreferrer');
-  }
+  function openPdf(id: string, action: PdfAction, formato: PdfFormato) {
+    const endpoint = formato === 'pdv' ? 'pdf-pdv' : 'pdf';
+    const downloadQuery = action === 'download' ? '?download=1' : '';
 
-  function handleDownloadPdf(id: string) {
     window.open(
-      `/api/comprovantes/${id}/pdf?download=1`,
+      `/api/comprovantes/${id}/${endpoint}${downloadQuery}`,
       '_blank',
       'noopener,noreferrer',
     );
+  }
+
+  function handleSelectPdfFormat(formato: PdfFormato) {
+    if (!pdfSelection) return;
+
+    openPdf(pdfSelection.item.id, pdfSelection.action, formato);
+    setPdfSelection(null);
   }
 
   return (
@@ -492,8 +505,12 @@ export default function ComprovantesPage() {
                   <ComprovanteCard
                     key={item.id}
                     item={item}
-                    onView={() => handleOpenPdf(item.id)}
-                    onDownload={() => handleDownloadPdf(item.id)}
+                    onView={() =>
+                      setPdfSelection({ item, action: 'view' })
+                    }
+                    onDownload={() =>
+                      setPdfSelection({ item, action: 'download' })
+                    }
                     menuAberto={menuAbertoId === item.id}
                     onToggleMenu={() =>
                       setMenuAbertoId((current) =>
@@ -585,7 +602,9 @@ export default function ComprovantesPage() {
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleOpenPdf(item.id)}
+                                onClick={() =>
+                                  setPdfSelection({ item, action: 'view' })
+                                }
                                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
                                 aria-label="Ver comprovante"
                               >
@@ -594,7 +613,9 @@ export default function ComprovantesPage() {
 
                               <button
                                 type="button"
-                                onClick={() => handleDownloadPdf(item.id)}
+                                onClick={() =>
+                                  setPdfSelection({ item, action: 'download' })
+                                }
                                 className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-600 transition hover:text-[#181818]"
                                 aria-label="Baixar comprovante"
                               >
@@ -658,6 +679,15 @@ export default function ComprovantesPage() {
             setComprovanteParaConcluir(null);
           }}
           onConfirm={handleConcluirTransferencia}
+        />
+      )}
+
+      {pdfSelection && (
+        <PdfFormatModal
+          item={pdfSelection.item}
+          action={pdfSelection.action}
+          onClose={() => setPdfSelection(null)}
+          onSelect={handleSelectPdfFormat}
         />
       )}
     </div>
@@ -838,6 +868,101 @@ function ComprovanteActionsMenu({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+type PdfFormatModalProps = {
+  item: Comprovante;
+  action: PdfAction;
+  onClose: () => void;
+  onSelect: (formato: PdfFormato) => void;
+};
+
+function PdfFormatModal({
+  item,
+  action,
+  onClose,
+  onSelect,
+}: PdfFormatModalProps) {
+  const title =
+    action === 'download' ? 'Baixar comprovante' : 'Ver comprovante';
+  const primaryLabel = action === 'download' ? 'Baixar A4' : 'Ver A4';
+  const pdvLabel = action === 'download' ? 'Baixar PDV' : 'Ver PDV';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6">
+      <div className="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl shadow-zinc-950/20 sm:p-6">
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[22px] bg-[#F7F7F5] text-[#181818]">
+          <DocumentTextIcon className="h-6 w-6" />
+        </div>
+
+        <h2 className="text-lg font-semibold text-[#181818]">{title}</h2>
+
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          Escolha o tamanho do PDF para o comprovante de {item.nome_cliente}.
+        </p>
+
+        <div className="mt-4 rounded-2xl bg-[#FAFAFA] p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+            Comprovante
+          </p>
+          <p className="mt-1 font-semibold text-[#181818]">
+            {formatComprovanteCode(item.id)}
+          </p>
+          <p className="mt-1 text-sm text-zinc-500">
+            {formatCurrency(Number(item.valor_transferencia || 0))}
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => onSelect('a4')}
+            className="flex min-h-28 flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 text-left transition hover:border-[#181818]"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#181818] text-white">
+              <DocumentTextIcon className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-[#181818]">
+                {primaryLabel}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-zinc-500">
+                Folha A4 tradicional.
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelect('pdv')}
+            className="flex min-h-28 flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-4 text-left transition hover:border-[#181818]"
+          >
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-[#181818]">
+              <ReceiptPercentIcon className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-[#181818]">
+                {pdvLabel}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-zinc-500">
+                Bobina 80 mm.
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -635,6 +635,7 @@ export default function ComprovantesPage() {
                         current === item.id ? null : item.id,
                       )
                     }
+                    onCloseMenu={() => setMenuAbertoId(null)}
                     onCancel={() => {
                       setMenuAbertoId(null);
                       setComprovanteParaCancelar(item);
@@ -758,6 +759,7 @@ export default function ComprovantesPage() {
                                     current === item.id ? null : item.id,
                                   )
                                 }
+                                onClose={() => setMenuAbertoId(null)}
                                 onCancel={() => {
                                   setMenuAbertoId(null);
                                   setComprovanteParaCancelar(item);
@@ -925,6 +927,7 @@ type ComprovanteCardProps = {
   onEdit: () => void;
   menuAberto: boolean;
   onToggleMenu: () => void;
+  onCloseMenu: () => void;
   onCancel: () => void;
   onConclude: () => void;
 };
@@ -936,6 +939,7 @@ function ComprovanteCard({
   onEdit,
   menuAberto,
   onToggleMenu,
+  onCloseMenu,
   onCancel,
   onConclude,
 }: ComprovanteCardProps) {
@@ -974,6 +978,7 @@ function ComprovanteCard({
             item={item}
             open={menuAberto}
             onToggle={onToggleMenu}
+            onClose={onCloseMenu}
             onCancel={onCancel}
             onEdit={onEdit}
           />
@@ -1039,6 +1044,7 @@ type ComprovanteActionsMenuProps = {
   item: Comprovante;
   open: boolean;
   onToggle: () => void;
+  onClose: () => void;
   onCancel: () => void;
   onEdit: () => void;
 };
@@ -1047,13 +1053,31 @@ function ComprovanteActionsMenu({
   item,
   open,
   onToggle,
+  onClose,
   onCancel,
   onEdit,
 }: ComprovanteActionsMenuProps) {
   const isCancelada = item.status === 'cancelada';
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, [onClose, open]);
 
   return (
-    <div className="relative">
+    <div ref={menuRef} className="relative">
       <button
         type="button"
         onClick={onToggle}

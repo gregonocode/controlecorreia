@@ -18,7 +18,11 @@ import {
 import RegistrarTransferenciaModal from '../components/transferencias/RegistrarTransferenciaModal';
 import { createClient } from '@/app/lib/supabase/client';
 
-type PeriodoFiltro = 'hoje' | 'ontem' | 'semana' | 'mes';
+type PeriodoFiltro = 'hoje' | 'ontem' | 'semana' | 'mes' | 'personalizado';
+type DateRange = {
+  start: string;
+  end: string;
+};
 
 type UsuarioSistema = {
   id: string;
@@ -65,7 +69,33 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function getPeriodRange(periodo: PeriodoFiltro) {
+function formatDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateLabel(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(new Date(`${value}T00:00:00`));
+}
+
+function getPeriodRange(periodo: PeriodoFiltro, customRange?: DateRange) {
+  if (periodo === 'personalizado' && customRange?.start && customRange?.end) {
+    const start = new Date(`${customRange.start}T00:00:00`);
+    const end = new Date(`${customRange.end}T23:59:59.999`);
+
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+    };
+  }
+
   const now = new Date();
 
   const start = new Date(now);
@@ -112,6 +142,23 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('hoje');
+  const [customRange, setCustomRange] = useState<DateRange>(() => {
+    const today = formatDateInputValue(new Date());
+
+    return {
+      start: today,
+      end: today,
+    };
+  });
+  const [customRangeDraft, setCustomRangeDraft] = useState<DateRange>(() => {
+    const today = formatDateInputValue(new Date());
+
+    return {
+      start: today,
+      end: today,
+    };
+  });
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
   const [modalTransferenciaOpen, setModalTransferenciaOpen] = useState(false);
 
   const [usuarioSistema, setUsuarioSistema] = useState<UsuarioSistema | null>(
@@ -169,11 +216,15 @@ export default function DashboardPage() {
   }, [transferencias]);
 
   const carregarTransferencias = useCallback(
-    async (usuarioId: string, periodoAtual: PeriodoFiltro) => {
+    async (
+      usuarioId: string,
+      periodoAtual: PeriodoFiltro,
+      rangePersonalizado?: DateRange,
+    ) => {
       setLoadingTransferencias(true);
       setErrorMessage('');
 
-      const range = getPeriodRange(periodoAtual);
+      const range = getPeriodRange(periodoAtual, rangePersonalizado);
 
       const { data, error } = await supabase
         .from('transferencias')
@@ -245,27 +296,75 @@ export default function DashboardPage() {
     }
 
     setUsuarioSistema(usuarioData as UsuarioSistema);
-    await carregarTransferencias(usuarioData.id, periodo);
+    await carregarTransferencias(usuarioData.id, periodo, customRange);
 
     setLoading(false);
-  }, [carregarTransferencias, periodo, router, supabase]);
+  }, [carregarTransferencias, customRange, periodo, router, supabase]);
 
   useEffect(() => {
-    carregarDashboard();
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) {
+        void carregarDashboard();
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, [carregarDashboard]);
 
   useEffect(() => {
     if (!usuarioSistema?.id) return;
 
-    carregarTransferencias(usuarioSistema.id, periodo);
-  }, [carregarTransferencias, periodo, usuarioSistema?.id]);
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) {
+        void carregarTransferencias(usuarioSistema.id, periodo, customRange);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [carregarTransferencias, customRange, periodo, usuarioSistema?.id]);
 
   function handleTransferenciaCriada() {
     setModalTransferenciaOpen(false);
 
     if (usuarioSistema?.id) {
-      carregarTransferencias(usuarioSistema.id, periodo);
+      carregarTransferencias(usuarioSistema.id, periodo, customRange);
     }
+  }
+
+  function handleFiltroClick(value: PeriodoFiltro) {
+    if (value === 'personalizado') {
+      setCustomRangeDraft(customRange);
+      setCustomRangeOpen(true);
+      return;
+    }
+
+    setCustomRangeOpen(false);
+    setPeriodo(value);
+  }
+
+  function handleAplicarPeriodoPersonalizado() {
+    if (!customRangeDraft.start || !customRangeDraft.end) {
+      setErrorMessage('Selecione a data inicial e a data final.');
+      return;
+    }
+
+    if (customRangeDraft.start > customRangeDraft.end) {
+      setErrorMessage('A data inicial não pode ser maior que a data final.');
+      return;
+    }
+
+    setErrorMessage('');
+    setCustomRange(customRangeDraft);
+    setPeriodo('personalizado');
+    setCustomRangeOpen(false);
   }
 
   return (
@@ -319,7 +418,7 @@ export default function DashboardPage() {
             <button
               key={filtro.value}
               type="button"
-              onClick={() => setPeriodo(filtro.value)}
+              onClick={() => handleFiltroClick(filtro.value)}
               className={`h-11 flex-none rounded-full px-5 text-sm font-medium transition ${
                 active
                   ? 'bg-[#181818] text-white'
@@ -330,7 +429,110 @@ export default function DashboardPage() {
             </button>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => handleFiltroClick('personalizado')}
+          className={`h-11 flex-none rounded-full px-5 text-sm font-medium transition ${
+            periodo === 'personalizado'
+              ? 'bg-[#181818] text-white'
+              : 'border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300'
+          }`}
+        >
+          Personalizado
+        </button>
       </section>
+
+      {customRangeOpen && (
+        <section className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#F7F7F5] px-3 py-1.5 text-xs font-medium text-zinc-600">
+                <CalendarDaysIcon className="h-4 w-4" />
+                Período personalizado
+              </div>
+
+              <h2 className="text-lg font-semibold text-[#181818]">
+                Escolha o intervalo
+              </h2>
+
+              <p className="mt-1 text-sm leading-6 text-zinc-500">
+                Selecione uma data inicial e uma data final para filtrar os
+                dados da dashboard.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] lg:min-w-[620px]">
+              <div>
+                <label
+                  htmlFor="dataInicial"
+                  className="mb-2 block text-sm font-medium text-zinc-700"
+                >
+                  Data inicial
+                </label>
+
+                <input
+                  id="dataInicial"
+                  type="date"
+                  value={customRangeDraft.start}
+                  onChange={(event) =>
+                    setCustomRangeDraft((current) => ({
+                      ...current,
+                      start: event.target.value,
+                    }))
+                  }
+                  className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] px-4 text-sm text-[#181818] outline-none transition focus:border-[#181818] focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="dataFinal"
+                  className="mb-2 block text-sm font-medium text-zinc-700"
+                >
+                  Data final
+                </label>
+
+                <input
+                  id="dataFinal"
+                  type="date"
+                  value={customRangeDraft.end}
+                  onChange={(event) =>
+                    setCustomRangeDraft((current) => ({
+                      ...current,
+                      end: event.target.value,
+                    }))
+                  }
+                  className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] px-4 text-sm text-[#181818] outline-none transition focus:border-[#181818] focus:bg-white"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCustomRangeOpen(false)}
+                className="mt-auto inline-flex h-12 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAplicarPeriodoPersonalizado}
+                className="mt-auto inline-flex h-12 items-center justify-center rounded-full bg-[#181818] px-5 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Aplicar
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {periodo === 'personalizado' && !customRangeOpen && (
+        <p className="-mt-3 text-sm text-zinc-500">
+          Período: {formatDateLabel(customRange.start)} até{' '}
+          {formatDateLabel(customRange.end)}
+        </p>
+      )}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ResumoCard

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -1058,26 +1058,9 @@ function ComprovanteActionsMenu({
   onEdit,
 }: ComprovanteActionsMenuProps) {
   const isCancelada = item.status === 'cancelada';
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: MouseEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) {
-        onClose();
-      }
-    }
-
-    document.addEventListener('mousedown', handlePointerDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-    };
-  }, [onClose, open]);
 
   return (
-    <div ref={menuRef} className="relative">
+    <div className="relative">
       <button
         type="button"
         onClick={onToggle}
@@ -1089,7 +1072,15 @@ function ComprovanteActionsMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1 shadow-lg shadow-zinc-950/10">
+        <>
+          <button
+            type="button"
+            onClick={onClose}
+            className="fixed inset-0 z-20 cursor-default bg-transparent"
+            aria-label="Fechar menu de ações"
+          />
+
+          <div className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1 shadow-lg shadow-zinc-950/10">
           <button
             type="button"
             onClick={onEdit}
@@ -1108,7 +1099,8 @@ function ComprovanteActionsMenu({
             <XCircleIcon className="h-4 w-4" />
             {isCancelada ? 'Já cancelada' : 'Cancelar transferência'}
           </button>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -435,8 +435,6 @@ export default function RegistrarTransferenciaModal({
                   <ClockIcon className="h-5 w-5" />
                   Pagar depois
                 </span>
-
-    
               </span>
             </label>
 

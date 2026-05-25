@@ -8,6 +8,8 @@ import {
   ArrowPathIcon,
   BanknotesIcon,
   CalendarDaysIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CheckCircleIcon,
   ClockIcon,
   DocumentMagnifyingGlassIcon,
@@ -16,6 +18,7 @@ import {
   ExclamationTriangleIcon,
   EyeIcon,
   MagnifyingGlassIcon,
+  PencilSquareIcon,
   PlusIcon,
   ReceiptPercentIcon,
   UserIcon,
@@ -48,6 +51,12 @@ type Comprovante = {
 
 type PdfAction = 'view' | 'download';
 type PdfFormato = 'a4' | 'pdv';
+type EditarTransferenciaPayload = {
+  nomeCliente: string;
+  taxaPercentual: number;
+  taxaFixa: number;
+};
+const ITENS_POR_PAGINA = 15;
 
 const filtrosStatus: { label: string; value: 'todos' | StatusComprovante }[] = [
   { label: 'Todos', value: 'todos' },
@@ -79,6 +88,13 @@ function formatComprovanteCode(id: string) {
   }, 0);
 
   return `#${String(number || 1).padStart(9, '0')}`;
+}
+
+function toNumber(value: string) {
+  const normalized = value.replace(/\./g, '').replace(',', '.');
+  const number = Number(normalized);
+
+  return Number.isFinite(number) ? number : 0;
 }
 
 function getStatusConfig(status: StatusComprovante) {
@@ -118,11 +134,15 @@ export default function ComprovantesPage() {
   const [statusFiltro, setStatusFiltro] = useState<'todos' | StatusComprovante>(
     'todos',
   );
+  const [paginaAtual, setPaginaAtual] = useState(1);
 
   const [loading, setLoading] = useState(true);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
   const [cancelandoId, setCancelandoId] = useState<string | null>(null);
   const [concluindoId, setConcluindoId] = useState<string | null>(null);
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
+  const [comprovanteParaEditar, setComprovanteParaEditar] =
+    useState<Comprovante | null>(null);
   const [comprovanteParaCancelar, setComprovanteParaCancelar] =
     useState<Comprovante | null>(null);
   const [comprovanteParaConcluir, setComprovanteParaConcluir] =
@@ -179,6 +199,27 @@ export default function ComprovantesPage() {
       totalCobrado,
     };
   }, [comprovantesFiltrados]);
+
+  const totalPaginas = Math.max(
+    1,
+    Math.ceil(comprovantesFiltrados.length / ITENS_POR_PAGINA),
+  );
+  const paginaAtualSegura = Math.min(paginaAtual, totalPaginas);
+
+  const comprovantesPaginados = useMemo(() => {
+    const start = (paginaAtualSegura - 1) * ITENS_POR_PAGINA;
+
+    return comprovantesFiltrados.slice(start, start + ITENS_POR_PAGINA);
+  }, [comprovantesFiltrados, paginaAtualSegura]);
+
+  const primeiroItemPagina =
+    comprovantesFiltrados.length === 0
+      ? 0
+      : (paginaAtualSegura - 1) * ITENS_POR_PAGINA + 1;
+  const ultimoItemPagina = Math.min(
+    paginaAtualSegura * ITENS_POR_PAGINA,
+    comprovantesFiltrados.length,
+  );
 
   const carregarComprovantes = useCallback(
     async (usuarioId: string) => {
@@ -277,6 +318,63 @@ export default function ComprovantesPage() {
     setComprovanteParaConcluir(null);
   }
 
+  async function handleEditarTransferencia({
+    nomeCliente,
+    taxaPercentual,
+    taxaFixa,
+  }: EditarTransferenciaPayload) {
+    if (!usuarioSistema?.id || !comprovanteParaEditar) return;
+
+    setEditandoId(comprovanteParaEditar.id);
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    const valorTransferencia = Number(
+      comprovanteParaEditar.valor_transferencia || 0,
+    );
+    const lucroTaxa = valorTransferencia * (taxaPercentual / 100) + taxaFixa;
+    const valorTotalCobrado = valorTransferencia + lucroTaxa;
+
+    const { error } = await supabase
+      .from('transferencias')
+      .update({
+        nome_cliente: nomeCliente,
+        taxa_manual_ativa: true,
+        taxa_manual_percentual: taxaPercentual,
+        taxa_manual_fixa: taxaFixa,
+        taxa_percentual_aplicada: taxaPercentual,
+        taxa_fixa_aplicada: taxaFixa,
+        lucro_taxa: lucroTaxa,
+        valor_total_cobrado: valorTotalCobrado,
+      })
+      .eq('id', comprovanteParaEditar.id)
+      .eq('usuario_id', usuarioSistema.id);
+
+    setEditandoId(null);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setComprovantes((current) =>
+      current.map((item) =>
+        item.id === comprovanteParaEditar.id
+          ? {
+              ...item,
+              nome_cliente: nomeCliente,
+              taxa_percentual_aplicada: taxaPercentual,
+              taxa_fixa_aplicada: taxaFixa,
+              lucro_taxa: lucroTaxa,
+              valor_total_cobrado: valorTotalCobrado,
+            }
+          : item,
+      ),
+    );
+    setSuccessMessage('Transferência editada com sucesso.');
+    setComprovanteParaEditar(null);
+  }
+
   const carregarPagina = useCallback(async () => {
     setLoading(true);
     setErrorMessage('');
@@ -318,7 +416,17 @@ export default function ComprovantesPage() {
   }, [carregarComprovantes, router, supabase]);
 
   useEffect(() => {
-    carregarPagina();
+    let active = true;
+
+    queueMicrotask(() => {
+      if (active) {
+        void carregarPagina();
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, [carregarPagina]);
 
   function openPdf(id: string, action: PdfAction, formato: PdfFormato) {
@@ -439,7 +547,10 @@ export default function ComprovantesPage() {
             <input
               type="text"
               value={busca}
-              onChange={(e) => setBusca(e.target.value)}
+              onChange={(e) => {
+                setBusca(e.target.value);
+                setPaginaAtual(1);
+              }}
               placeholder="Buscar por nome ou código"
               className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
             />
@@ -454,7 +565,10 @@ export default function ComprovantesPage() {
               <button
                 key={filtro.value}
                 type="button"
-                onClick={() => setStatusFiltro(filtro.value)}
+                onClick={() => {
+                  setStatusFiltro(filtro.value);
+                  setPaginaAtual(1);
+                }}
                 className={`h-11 flex-none rounded-full px-5 text-sm font-medium transition ${
                   active
                     ? 'bg-[#181818] text-white'
@@ -501,7 +615,7 @@ export default function ComprovantesPage() {
           ) : (
             <>
               <div className="space-y-3 lg:hidden">
-                {comprovantesFiltrados.map((item) => (
+                {comprovantesPaginados.map((item) => (
                   <ComprovanteCard
                     key={item.id}
                     item={item}
@@ -511,6 +625,10 @@ export default function ComprovantesPage() {
                     onDownload={() =>
                       setPdfSelection({ item, action: 'download' })
                     }
+                    onEdit={() => {
+                      setMenuAbertoId(null);
+                      setComprovanteParaEditar(item);
+                    }}
                     menuAberto={menuAbertoId === item.id}
                     onToggleMenu={() =>
                       setMenuAbertoId((current) =>
@@ -542,7 +660,7 @@ export default function ComprovantesPage() {
                   </thead>
 
                   <tbody className="divide-y divide-zinc-100 bg-white">
-                    {comprovantesFiltrados.map((item) => {
+                    {comprovantesPaginados.map((item) => {
                       const status = getStatusConfig(item.status);
                       const StatusIcon = status.icon;
                       const code = formatComprovanteCode(item.id);
@@ -644,6 +762,10 @@ export default function ComprovantesPage() {
                                   setMenuAbertoId(null);
                                   setComprovanteParaCancelar(item);
                                 }}
+                                onEdit={() => {
+                                  setMenuAbertoId(null);
+                                  setComprovanteParaEditar(item);
+                                }}
                               />
                             </div>
                           </td>
@@ -653,10 +775,38 @@ export default function ComprovantesPage() {
                   </tbody>
                 </table>
               </div>
+
+              <Paginacao
+                paginaAtual={paginaAtualSegura}
+                totalPaginas={totalPaginas}
+                primeiroItem={primeiroItemPagina}
+                ultimoItem={ultimoItemPagina}
+                totalItens={comprovantesFiltrados.length}
+                onPrevious={() =>
+                  setPaginaAtual((current) => Math.max(1, current - 1))
+                }
+                onNext={() =>
+                  setPaginaAtual((current) =>
+                    Math.min(totalPaginas, current + 1),
+                  )
+                }
+              />
             </>
           )}
         </div>
       </section>
+
+      {comprovanteParaEditar && (
+        <EditarTransferenciaModal
+          item={comprovanteParaEditar}
+          loading={editandoId === comprovanteParaEditar.id}
+          onClose={() => {
+            if (editandoId) return;
+            setComprovanteParaEditar(null);
+          }}
+          onConfirm={handleEditarTransferencia}
+        />
+      )}
 
       {comprovanteParaCancelar && (
         <ConfirmCancelModal
@@ -694,6 +844,60 @@ export default function ComprovantesPage() {
   );
 }
 
+type PaginacaoProps = {
+  paginaAtual: number;
+  totalPaginas: number;
+  primeiroItem: number;
+  ultimoItem: number;
+  totalItens: number;
+  onPrevious: () => void;
+  onNext: () => void;
+};
+
+function Paginacao({
+  paginaAtual,
+  totalPaginas,
+  primeiroItem,
+  ultimoItem,
+  totalItens,
+  onPrevious,
+  onNext,
+}: PaginacaoProps) {
+  return (
+    <div className="mt-5 flex flex-col gap-3 border-t border-zinc-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm text-zinc-500">
+        Mostrando {primeiroItem} a {ultimoItem} de {totalItens} comprovantes
+      </p>
+
+      <div className="flex items-center justify-between gap-3 sm:justify-end">
+        <button
+          type="button"
+          onClick={onPrevious}
+          disabled={paginaAtual === 1}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Página anterior"
+        >
+          <ChevronLeftIcon className="h-5 w-5" />
+        </button>
+
+        <span className="min-w-28 text-center text-sm font-medium text-[#181818]">
+          Página {paginaAtual} de {totalPaginas}
+        </span>
+
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={paginaAtual === totalPaginas}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Próxima página"
+        >
+          <ChevronRightIcon className="h-5 w-5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type ResumoCardProps = {
   title: string;
   value: string;
@@ -718,6 +922,7 @@ type ComprovanteCardProps = {
   item: Comprovante;
   onView: () => void;
   onDownload: () => void;
+  onEdit: () => void;
   menuAberto: boolean;
   onToggleMenu: () => void;
   onCancel: () => void;
@@ -728,6 +933,7 @@ function ComprovanteCard({
   item,
   onView,
   onDownload,
+  onEdit,
   menuAberto,
   onToggleMenu,
   onCancel,
@@ -769,6 +975,7 @@ function ComprovanteCard({
             open={menuAberto}
             onToggle={onToggleMenu}
             onCancel={onCancel}
+            onEdit={onEdit}
           />
         </div>
       </div>
@@ -833,6 +1040,7 @@ type ComprovanteActionsMenuProps = {
   open: boolean;
   onToggle: () => void;
   onCancel: () => void;
+  onEdit: () => void;
 };
 
 function ComprovanteActionsMenu({
@@ -840,6 +1048,7 @@ function ComprovanteActionsMenu({
   open,
   onToggle,
   onCancel,
+  onEdit,
 }: ComprovanteActionsMenuProps) {
   const isCancelada = item.status === 'cancelada';
 
@@ -856,7 +1065,16 @@ function ComprovanteActionsMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1 shadow-lg shadow-zinc-950/10">
+        <div className="absolute right-0 z-20 mt-2 w-56 overflow-hidden rounded-2xl border border-zinc-100 bg-white p-1 shadow-lg shadow-zinc-950/10">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-zinc-700 transition hover:bg-[#F7F7F5] hover:text-[#181818]"
+          >
+            <PencilSquareIcon className="h-4 w-4" />
+            Editar transferência
+          </button>
+
           <button
             type="button"
             onClick={onCancel}
@@ -973,6 +1191,229 @@ type ConfirmCancelModalProps = {
   onClose: () => void;
   onConfirm: () => void;
 };
+
+type EditarTransferenciaModalProps = {
+  item: Comprovante;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: (payload: EditarTransferenciaPayload) => void;
+};
+
+function EditarTransferenciaModal({
+  item,
+  loading,
+  onClose,
+  onConfirm,
+}: EditarTransferenciaModalProps) {
+  const [nomeCliente, setNomeCliente] = useState(item.nome_cliente);
+  const [taxaPercentual, setTaxaPercentual] = useState(
+    String(Number(item.taxa_percentual_aplicada || 0)).replace('.', ','),
+  );
+  const [taxaFixa, setTaxaFixa] = useState(
+    String(Number(item.taxa_fixa_aplicada || 0)).replace('.', ','),
+  );
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const preview = useMemo(() => {
+    const percentual = toNumber(taxaPercentual);
+    const fixa = toNumber(taxaFixa);
+    const valorTransferencia = Number(item.valor_transferencia || 0);
+    const lucro = valorTransferencia * (percentual / 100) + fixa;
+
+    return {
+      percentual,
+      fixa,
+      lucro,
+      total: valorTransferencia + lucro,
+    };
+  }, [item.valor_transferencia, taxaFixa, taxaPercentual]);
+
+  function handleConfirm() {
+    setErrorMessage('');
+
+    if (!nomeCliente.trim()) {
+      setErrorMessage('Informe o nome completo da pessoa.');
+      return;
+    }
+
+    if (preview.percentual < 0 || preview.fixa < 0) {
+      setErrorMessage('Informe uma taxa válida.');
+      return;
+    }
+
+    onConfirm({
+      nomeCliente: nomeCliente.trim(),
+      taxaPercentual: preview.percentual,
+      taxaFixa: preview.fixa,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 px-4 py-6">
+      <div className="w-full max-w-xl rounded-[28px] bg-white p-5 shadow-2xl shadow-zinc-950/20 sm:p-6">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-3 inline-flex h-9 items-center gap-2 rounded-full bg-[#F7F7F5] px-3 text-xs font-medium text-zinc-600">
+              <PencilSquareIcon className="h-4 w-4" />
+              Editar transferência
+            </div>
+
+            <h2 className="text-lg font-semibold text-[#181818]">
+              Ajustar dados do comprovante
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-zinc-500">
+              Altere somente o nome do cliente e a taxa aplicada.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-[#F7F7F5] text-zinc-500 transition hover:text-[#181818] disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Fechar modal"
+          >
+            <XCircleIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {errorMessage && (
+          <div className="mb-5 flex items-start gap-3 rounded-[24px] border border-amber-100 bg-amber-50 p-4 text-amber-800">
+            <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 flex-none" />
+            <p className="text-sm leading-6 text-amber-700">
+              {errorMessage}
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="editarNomeCliente"
+              className="mb-2 block text-sm font-medium text-zinc-700"
+            >
+              Nome completo
+            </label>
+
+            <div className="relative">
+              <UserIcon className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
+
+              <input
+                id="editarNomeCliente"
+                type="text"
+                value={nomeCliente}
+                onChange={(e) => setNomeCliente(e.target.value)}
+                className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-5 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="editarTaxaPercentual"
+                className="mb-2 block text-sm font-medium text-zinc-700"
+              >
+                Taxa percentual
+              </label>
+
+              <div className="relative">
+                <input
+                  id="editarTaxaPercentual"
+                  type="text"
+                  inputMode="decimal"
+                  value={taxaPercentual}
+                  onChange={(e) => setTaxaPercentual(e.target.value)}
+                  placeholder="Ex: 3"
+                  className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] px-5 pr-12 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
+                />
+
+                <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">
+                  %
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="editarTaxaFixa"
+                className="mb-2 block text-sm font-medium text-zinc-700"
+              >
+                Taxa fixa
+              </label>
+
+              <div className="relative">
+                <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-sm font-semibold text-zinc-400">
+                  R$
+                </span>
+
+                <input
+                  id="editarTaxaFixa"
+                  type="text"
+                  inputMode="decimal"
+                  value={taxaFixa}
+                  onChange={(e) => setTaxaFixa(e.target.value)}
+                  placeholder="Ex: 5,00"
+                  className="h-14 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-5 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] bg-[#181818] p-4 text-white">
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40">
+              Prévia
+            </p>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[18px] bg-white/5 p-3">
+                <p className="text-xs text-white/40">Transferido</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {formatCurrency(Number(item.valor_transferencia || 0))}
+                </p>
+              </div>
+
+              <div className="rounded-[18px] bg-white/5 p-3">
+                <p className="text-xs text-white/40">Lucro</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {formatCurrency(preview.lucro)}
+                </p>
+              </div>
+
+              <div className="rounded-[18px] bg-white/5 p-3">
+                <p className="text-xs text-white/40">Total cobrado</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {formatCurrency(preview.total)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-600 transition hover:border-zinc-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            onClick={handleConfirm}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-[#181818] px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? 'Salvando...' : 'Salvar alterações'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function ConfirmCancelModal({
   item,

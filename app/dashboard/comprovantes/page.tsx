@@ -97,6 +97,13 @@ function toNumber(value: string) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
 function getStatusConfig(status: StatusComprovante) {
   if (status === 'concluida') {
     return {
@@ -131,6 +138,7 @@ export default function ComprovantesPage() {
 
   const [comprovantes, setComprovantes] = useState<Comprovante[]>([]);
   const [busca, setBusca] = useState('');
+  const [buscaFocada, setBuscaFocada] = useState(false);
   const [statusFiltro, setStatusFiltro] = useState<'todos' | StatusComprovante>(
     'todos',
   );
@@ -154,8 +162,39 @@ export default function ComprovantesPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  const clientesAutocomplete = useMemo(() => {
+    const clientes = new Map<string, { nome: string; total: number }>();
+
+    comprovantes.forEach((item) => {
+      const nome = item.nome_cliente.trim();
+      const key = normalizeSearch(nome);
+
+      if (!nome) return;
+
+      const cliente = clientes.get(key);
+
+      if (cliente) {
+        cliente.total += 1;
+      } else {
+        clientes.set(key, { nome, total: 1 });
+      }
+    });
+
+    return Array.from(clientes.values()).sort((a, b) =>
+      a.nome.localeCompare(b.nome, 'pt-BR'),
+    );
+  }, [comprovantes]);
+
+  const sugestoesClientes = useMemo(() => {
+    const termo = normalizeSearch(busca.trim());
+
+    return clientesAutocomplete
+      .filter((cliente) => !termo || normalizeSearch(cliente.nome).includes(termo))
+      .slice(0, 8);
+  }, [busca, clientesAutocomplete]);
+
   const comprovantesFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
+    const termo = normalizeSearch(busca.trim());
 
     return comprovantes.filter((item) => {
       const matchStatus =
@@ -163,9 +202,7 @@ export default function ComprovantesPage() {
 
       const matchBusca =
         !termo ||
-        item.id.toLowerCase().includes(termo) ||
-        formatComprovanteCode(item.id).toLowerCase().includes(termo) ||
-        item.nome_cliente.toLowerCase().includes(termo);
+        normalizeSearch(item.nome_cliente).includes(termo);
 
       return matchStatus && matchBusca;
     });
@@ -537,7 +574,8 @@ export default function ComprovantesPage() {
             </h2>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Use a busca ou filtros para encontrar um registro específico.
+              Use a busca por cliente ou filtros para encontrar um registro
+              especifico.
             </p>
           </div>
 
@@ -551,9 +589,63 @@ export default function ComprovantesPage() {
                 setBusca(e.target.value);
                 setPaginaAtual(1);
               }}
-              placeholder="Buscar por nome ou código"
-              className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-4 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
+              onFocus={() => setBuscaFocada(true)}
+              onBlur={() => {
+                window.setTimeout(() => setBuscaFocada(false), 120);
+              }}
+              placeholder="Buscar cliente"
+              aria-label="Buscar comprovantes por cliente"
+              aria-autocomplete="list"
+              className="h-12 w-full rounded-full border border-zinc-200 bg-[#FAFAFA] pl-12 pr-10 text-sm text-[#181818] outline-none transition placeholder:text-zinc-400 focus:border-[#181818] focus:bg-white"
             />
+
+            {busca && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBusca('');
+                  setPaginaAtual(1);
+                }}
+                className="absolute right-3 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 hover:text-[#181818]"
+                aria-label="Limpar busca"
+              >
+                <XCircleIcon className="h-5 w-5" />
+              </button>
+            )}
+
+            {buscaFocada && sugestoesClientes.length > 0 && (
+              <div
+                role="listbox"
+                className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 overflow-hidden rounded-3xl border border-zinc-100 bg-white p-2 shadow-xl shadow-zinc-950/10"
+              >
+                {sugestoesClientes.map((cliente) => (
+                  <button
+                    key={normalizeSearch(cliente.nome)}
+                    type="button"
+                    role="option"
+                    aria-selected={busca === cliente.nome}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setBusca(cliente.nome);
+                      setBuscaFocada(false);
+                      setPaginaAtual(1);
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left transition hover:bg-[#F7F7F5]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-[#181818]">
+                        {cliente.nome}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        {cliente.total}{' '}
+                        {cliente.total === 1 ? 'comprovante' : 'comprovantes'}
+                      </span>
+                    </span>
+                    <UserIcon className="h-4 w-4 flex-none text-zinc-300" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

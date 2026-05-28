@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   ArrowLeftOnRectangleIcon,
+  ChartBarIcon,
   Cog6ToothIcon,
   DocumentTextIcon,
   HomeIcon,
@@ -33,6 +34,11 @@ const navItems = [
     name: 'Comprovantes',
     href: '/dashboard/comprovantes',
     icon: DocumentTextIcon,
+  },
+  {
+    name: 'Relatorios',
+    href: '/dashboard/relatorios',
+    icon: ChartBarIcon,
   },
   {
     name: 'Configurações',
@@ -165,7 +171,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
       {/* Bottom navigation mobile */}
       <nav className="fixed bottom-3 left-3 right-3 z-50 rounded-full border border-zinc-200 bg-white/95 p-2 shadow-lg shadow-zinc-200/70 backdrop-blur lg:hidden">
-        <div className="grid grid-cols-4 gap-1">
+        <div className="grid grid-cols-5 gap-1">
           {navItems.map((item) => {
             const active = isActive(item.href);
             const Icon = item.icon;
